@@ -43,11 +43,19 @@ It sits entirely on your local machine—no SaaS subscriptions, no handing over 
   - **GCP**: Login via `gcloud auth application-default login`.
   - **Docker**: Have Docker Desktop running.
 
-### Installation & Build
-Clone the repository and build the single binary (the frontend UI is embedded directly into the executable!):
+### Installation
+
+The absolute easiest way to get started is to download the pre-compiled binary. There are **zero dependencies** to install (you don't even need Go!).
+
+1. Go to the [Releases Page](https://github.com/AnuragJosyula/infra-devops-doctor/releases/latest).
+2. Download the executable for your OS (`.exe` for Windows, or the Mac/Linux binaries).
+3. Run it directly from your terminal!
+
+### Build from Source (Optional)
+If you prefer to compile it yourself (the frontend UI is embedded directly into the executable!):
 
 ```bash
-git clone https://github.com/yourusername/infra-devops-doctor.git
+git clone https://github.com/AnuragJosyula/infra-devops-doctor.git
 cd infra-devops-doctor/cmd/inframap
 go build -o doctor.exe .
 ```
