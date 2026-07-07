@@ -71,7 +71,7 @@ Open your browser to `http://localhost:8080` (or your chosen port).
 
 ## 🎮 Navigating the UI
 
-We spent a lot of time polishing the UX to make it feel like a premium tool:
+I spent a lot of time polishing the UX to make it feel like a premium tool:
 
 - **Left-Click a Node**: Opens the details sidebar, showing metadata, security findings, and exact connections. It also triggers **Spotlight Mode**, highlighting the immediate blast radius.
 - **Right-Click a Node**: Opens the context menu to copy IDs, expand/collapse children, or trigger a deep Blast Radius analysis.
