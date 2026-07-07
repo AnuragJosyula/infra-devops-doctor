@@ -20,8 +20,8 @@ It sits entirely on your local machine—no SaaS subscriptions, no handing over 
 
 - 🌍 **Unified Multi-Cloud Discovery**: Native support for **AWS, Azure, GCP, and Docker**. Scans your resources concurrently and merges them into a single "Mega-Graph".
 - 🕸️ **Interactive D3.js Visualization**: Beautiful, themeable (Dark/Light) architecture map. Features a collapsible hierarchy tree, minimap, and progressive "Escape-key" navigation.
-- 🎯 **Spotlight Mode (Blast Radius)**: Click any resource to instantly dim the map and highlight its blast radius. See exactly which web servers, load balancers, and subnets an exposed database is connected to.
-- 🩺 **The "Doctor" (Offline Security Scanner)**: A zero-API-cost CSPM engine that statically analyzes your infrastructure graph entirely offline. It instantly flags:
+- 🎯 **Spotlight Mode (Blast Radius)**: Click any resource to instantly dim the map and highlight its blast radius. See exactly which web servers, load balancers, and subnets and exposed database is connected to.
+- 🩺 **The "Doctor" (Offline Security Scanner)**: A zero-API-cost CSPM engine that analyzes your infrastructure graph entirely offline. It instantly flags:
   - Unencrypted S3/GCS buckets
   - Open SSH/RDP/Database ports (`0.0.0.0/0`)
   - Overly permissive IAM roles (`FullAccess`)
