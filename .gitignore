@@ -1,0 +1,20 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Snapshots directory
+snapshots/
+
+# Editor directories and files
+.idea
+.vscode
+*.swp
+*.swo
+.claude/
+
+# Go workspace file
+go.work
+go.work.sum
