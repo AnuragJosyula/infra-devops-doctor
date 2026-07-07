@@ -497,6 +497,7 @@ function selectResource(id) {
     }
     updateGraph();
     highlightSelection();
+    updateBreadcrumb(target);
   }
 }
 
@@ -666,16 +667,31 @@ function drawNodes(sel, { labelBelow = true } = {}) {
 
 function attachNodeEvents(sel) {
   sel.on('click', handleNodeClick)
+     .on('dblclick', handleNodeDblClick)
      .on('contextmenu', handleContextMenu)
      .on('mouseover', showNodeTooltip)
      .on('mouseout', hideTooltip);
 }
 
 // ─── Force ("Network Map"): hierarchy edges + real relationship edges ───
+// remembered positions so expand/collapse doesn't re-scramble the whole map
+const posCache = new Map();
+
 function renderForce() {
   const { width, height } = svgSize();
   const nodes = visibleNodes();
   const byId = new Map(nodes.map(d => [d.data.id, d]));
+
+  // seed nodes at their previous position (new nodes start near their parent)
+  nodes.forEach(d => {
+    const prev = posCache.get(d.data.id);
+    if (prev) { d.x = prev.x; d.y = prev.y; }
+    else {
+      const pp = d.parent && posCache.get(d.parent.data.id);
+      if (pp) { d.x = pp.x + (Math.random() - 0.5) * 60; d.y = pp.y + (Math.random() - 0.5) * 60; }
+    }
+  });
+  const anyCached = nodes.some(d => posCache.has(d.data.id));
 
   // hierarchy containment links between visible nodes
   const links = state.hierarchyRoot.links()
@@ -698,6 +714,9 @@ function renderForce() {
     .force('collide', d3.forceCollide(d => getRadius(d) + 22))
     .force('x', d3.forceX(width / 2).strength(0.04))
     .force('y', d3.forceY(height / 2).strength(0.05));
+
+  // gentle settle when we already know the layout — no explosion on each click
+  if (anyCached) simulation.alpha(0.25);
 
   const link = g.append('g').selectAll('path').data(links)
     .enter().append('path')
@@ -730,12 +749,14 @@ function renderForce() {
       return `M${d.source.x},${d.source.y}Q${(d.source.x + tx) / 2 - dy * 0.08},${(d.source.y + ty) / 2 + dx * 0.08} ${tx},${ty}`;
     });
     node.attr('transform', d => `translate(${d.x},${d.y})`);
+    nodes.forEach(d => posCache.set(d.data.id, { x: d.x, y: d.y }));
     if (simulation.alpha() < 0.06) {
       updateMinimapContent();
-      if (!fitted) { fitted = true; zoomToFit(400); }
+      if (!fitted) { fitted = true; if (!anyCached) zoomToFit(400); }
     }
   });
-  simulation.on('end', () => { updateMinimapContent(); zoomToFit(300); });
+  // only auto-fit on a fresh layout; when navigating we keep the user's viewport
+  simulation.on('end', () => { updateMinimapContent(); if (!anyCached) zoomToFit(300); });
 }
 
 // ─── Tree ───
@@ -915,18 +936,71 @@ function highlightSelection() {
 // Interactions
 // ═══════════════════════════════════════════════════════
 
+// single click: select + details + breadcrumb. Nothing else — no layout change,
+// no auto-focus, so you never lose your place.
 function handleNodeClick(event, d) {
   event.stopPropagation();
-  const datum = d.data.id ? d : d3.select(this.parentNode).datum(); // radial nests a <g>
+  const datum = d.data ? d : d3.select(this.parentNode).datum(); // radial nests a <g>
   state.selectedId = datum.data.id;
   showDetails(datum.data);
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.id === datum.data.id));
-  
-  if (datum.children) { datum._children = datum.children; datum.children = null; updateGraph(); }
-  else if (datum._children) { datum.children = datum._children; datum._children = null; updateGraph(); }
-  
   highlightSelection();
-  focusNode(datum.data.id);
+  updateBreadcrumb(datum);
+}
+
+// double click: expand/collapse children
+function handleNodeDblClick(event, d) {
+  event.stopPropagation();
+  event.preventDefault();
+  const datum = d.data ? d : d3.select(this.parentNode).datum();
+  if (datum.children) { datum._children = datum.children; datum.children = null; }
+  else if (datum._children) { datum.children = datum._children; datum._children = null; }
+  else return; // leaf — nothing to toggle
+  updateGraph();
+}
+
+// breadcrumb: 🏠 › vpc › subnet › node — click any ancestor to jump back up
+function updateBreadcrumb(datum) {
+  const el = document.getElementById('breadcrumb');
+  if (!datum) { el.innerHTML = ''; return; }
+  const path = datum.ancestors().reverse(); // root … selected
+  el.innerHTML = path.map((a, i) => {
+    const last = i === path.length - 1;
+    const label = a.data.id === 'root' ? '🏠' : `${typeStyle(a.data.type).icon} ${truncate(a.data.name, 18)}`;
+    return `<span class="crumb ${last ? 'current' : ''}" data-id="${a.data.id}">${label}</span>` +
+           (last ? '' : '<span class="crumb-sep">›</span>');
+  }).join('');
+  el.querySelectorAll('.crumb:not(.current)').forEach(c => {
+    c.addEventListener('click', () => {
+      if (c.dataset.id === 'root') { clearSelection(); zoomToFit(); }
+      else selectResource(c.dataset.id);
+    });
+  });
+}
+
+function clearSelection() {
+  state.selectedId = null;
+  highlightSelection();
+  document.getElementById('detail-panel').classList.add('hidden');
+  document.querySelectorAll('.nav-item.active').forEach(i => i.classList.remove('active'));
+  updateBreadcrumb(null);
+}
+
+// Escape peels ONE layer of state per press — menu → blast → focus → search →
+// selection → refit. It never expands/collapses nodes, so the map stays put.
+function escapeBack() {
+  const menu = document.getElementById('context-menu');
+  if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
+  const area = document.getElementById('graph-area');
+  if (area.classList.contains('blast-mode')) { clearBlast(); return; }
+  if (area.classList.contains('focus-mode')) { clearFocus(); return; }
+  if (state.searchQuery) {
+    const s = document.getElementById('search-input');
+    s.value = ''; state.searchQuery = ''; applyFilters(); s.blur();
+    return;
+  }
+  if (state.selectedId) { clearSelection(); return; }
+  zoomToFit();
 }
 
 function handleContextMenu(event, d) {
@@ -1172,7 +1246,7 @@ function showNodeTooltip(event, d) {
   tt.innerHTML = `
     <div class="tt-title">${st.icon} ${datum.data.name} ${statusBadge(datum.data.status)}</div>
     <div class="tt-type">${datum.data.type}${datum.data.region ? ' · ' + datum.data.region : ''}</div>
-    ${datum._children ? `<div class="tt-hint">▸ ${datum._children.length} hidden — click to expand</div>` : ''}`;
+    ${datum._children ? `<div class="tt-hint">▸ ${datum._children.length} hidden — double-click to expand</div>` : ''}`;
   tt.style.left = `${Math.min(event.clientX + 16, window.innerWidth - 280)}px`;
   tt.style.top = `${event.clientY - 12}px`;
 }
@@ -1194,44 +1268,7 @@ function initEventListeners() {
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
-    if (e.key === 'Escape') {
-      const menu = document.getElementById('context-menu');
-      if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
-
-      const toast = document.getElementById('blast-toast');
-      if (!toast.classList.contains('hidden')) { clearBlast(); return; }
-
-      const panel = document.getElementById('detail-panel');
-      if (!panel.classList.contains('hidden')) { closeDetails(); return; }
-
-      const area = document.getElementById('graph-area');
-      if (area.classList.contains('focus-mode')) { clearFocus(); return; }
-
-      if (state.searchQuery) { search.value = ''; state.searchQuery = ''; applyFilters(); search.blur(); return; }
-
-      if (state.selectedId) {
-        let target = null;
-        state.hierarchyRoot.each(d => { if (d.data.id === state.selectedId) target = d; });
-        if (target) {
-          if (target.children) {
-            target._children = target.children;
-            target.children = null;
-          } else if (target.parent && target.parent.data.id !== 'root') {
-            state.selectedId = target.parent.data.id;
-            target.parent._children = target.parent.children;
-            target.parent.children = null;
-          } else {
-            state.selectedId = null;
-          }
-          updateGraph();
-          zoomToFit();
-          highlightSelection();
-          return;
-        }
-      }
-
-      zoomToFit();
-    }
+    if (e.key === 'Escape') escapeBack();
   });
 
   document.getElementById('btn-close-detail').addEventListener('click', () => {
@@ -1249,9 +1286,11 @@ function initEventListeners() {
     clearFocus();
     const search = document.getElementById('search-input');
     search.value = ''; state.searchQuery = ''; applyFilters(); search.blur();
+    posCache.clear(); // fresh layout on purpose — this is "start over"
     setAllCollapsed(true);
     state.selectedId = null;
     highlightSelection();
+    updateBreadcrumb(null);
     zoomToFit();
   });
 
