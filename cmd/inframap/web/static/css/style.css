@@ -580,6 +580,34 @@ body {
 .node.diff-added .halo { stroke: var(--green); stroke-width: 2.5px; }
 .node.diff-changed .halo { stroke: var(--amber); stroke-width: 2.5px; stroke-dasharray: 4,3; }
 
+/* ═══ Plan preview ═══ */
+
+.graph-area.plan-mode .node { opacity: 0.10; }
+.graph-area.plan-mode .link { opacity: 0.05; }
+.graph-area.plan-mode .node.plan-direct, .graph-area.plan-mode .node.plan-impact { opacity: 1; }
+.node.plan-delete .halo { stroke: var(--red); stroke-width: 2.5px; animation: sev-pulse 1.2s infinite; }
+.node.plan-update .halo { stroke: var(--amber); stroke-width: 2.5px; }
+.node.plan-impact .bg-circle { stroke: var(--red); }
+
+.plan-summary {
+  display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.plan-pill {
+  padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  background: var(--bg-base); border: 1px solid var(--border);
+}
+.plan-pill b { font-family: 'JetBrains Mono', monospace; }
+.plan-change {
+  border: 1px solid var(--border); border-left: 3px solid var(--sev, var(--slate));
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+  background: var(--bg-base); transition: border-color .15s;
+}
+.plan-change:hover { border-color: var(--border-strong); }
+.plan-change .pc-head { display: flex; align-items: center; gap: 8px; }
+.plan-change .pc-addr { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; flex: 1; word-break: break-all; }
+.plan-change .pc-action { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
+.plan-change .pc-note { font-size: 11.5px; color: var(--text-secondary); margin-top: 5px; }
+
 /* ═══ Breadcrumb ═══ */
 
 .breadcrumb {

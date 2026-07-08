@@ -582,6 +582,7 @@ function updateGraph() {
   highlightSelection();
   applyGraphSearch();
   applyAnnotations();
+  if (state.plan) applyPlanHighlights();
   setTimeout(updateMinimapContent, 120);
 }
 
@@ -992,6 +993,7 @@ function escapeBack() {
   const menu = document.getElementById('context-menu');
   if (!menu.classList.contains('hidden')) { menu.classList.add('hidden'); return; }
   const area = document.getElementById('graph-area');
+  if (area.classList.contains('plan-mode')) { clearPlan(); closeDetails(); return; }
   if (area.classList.contains('blast-mode')) { clearBlast(); return; }
   if (area.classList.contains('focus-mode')) { clearFocus(); return; }
   if (state.searchQuery) {
@@ -1110,6 +1112,104 @@ function clearBlast() {
   document.getElementById('graph-area').classList.remove('blast-mode');
   document.getElementById('blast-toast').classList.add('hidden');
   g.selectAll('.blast, .blast-origin').classed('blast', false).classed('blast-origin', false);
+}
+
+// ═══════════════════════════════════════════════════════
+// Terraform plan preview
+// ═══════════════════════════════════════════════════════
+
+const PLAN_ACTION_COLOR = { delete: '#ef4444', replace: '#ef4444', update: '#f59e0b', create: '#22c55e' };
+
+async function previewPlan(fileText) {
+  let res;
+  try {
+    const r = await fetch('/api/plan/preview', { method: 'POST', body: fileText });
+    res = await r.json();
+    if (!r.ok) throw new Error(res.error || 'preview failed');
+  } catch (err) {
+    alert('Plan preview failed: ' + err.message);
+    return;
+  }
+  state.plan = res;
+  if (!['force', 'tree', 'radial'].includes(state.currentView)) switchView('force');
+  applyPlanHighlights();
+  showPlanResults(res);
+}
+
+function applyPlanHighlights() {
+  const res = state.plan;
+  if (!res) return;
+  const area = document.getElementById('graph-area');
+  area.classList.remove('blast-mode', 'focus-mode', 'searching');
+  area.classList.add('plan-mode');
+
+  const direct = {};   // nodeId → action
+  const impacted = new Set();
+  res.changes.forEach(c => {
+    if (c.node_id) direct[c.node_id] = c.action;
+    (c.impacted || []).forEach(id => impacted.add(id));
+  });
+
+  g.selectAll('.node')
+    .classed('plan-direct', d => !!direct[d.data.id])
+    .classed('plan-delete', d => direct[d.data.id] === 'delete' || direct[d.data.id] === 'replace')
+    .classed('plan-update', d => direct[d.data.id] === 'update')
+    .classed('plan-impact', d => impacted.has(d.data.id) && !direct[d.data.id]);
+}
+
+function clearPlan() {
+  state.plan = null;
+  document.getElementById('graph-area').classList.remove('plan-mode');
+  g.selectAll('.plan-direct, .plan-delete, .plan-update, .plan-impact')
+    .classed('plan-direct', false).classed('plan-delete', false)
+    .classed('plan-update', false).classed('plan-impact', false);
+}
+
+function showPlanResults(res) {
+  const panel = document.getElementById('detail-panel');
+  panel.classList.remove('hidden');
+  document.getElementById('detail-title').textContent = 'Plan preview';
+
+  const sevRank = { critical: 0, high: 1, medium: 2, low: 3 };
+  const changes = [...res.changes].sort((a, b) => sevRank[a.risk] - sevRank[b.risk]);
+
+  let html = `
+    <div class="plan-summary">
+      <span class="plan-pill"><b>${res.total_direct}</b> direct changes</span>
+      <span class="plan-pill" style="color:var(--red)"><b>${res.total_impacted}</b> impacted downstream</span>
+      ${res.unmatched ? `<span class="plan-pill" style="color:var(--amber)"><b>${res.unmatched}</b> not in live graph</span>` : ''}
+    </div>
+    ${res.riskiest ? `<div class="finding-fix" style="margin-bottom:14px">Riskiest change: <b>${res.riskiest}</b> — review before applying.</div>` : ''}`;
+
+  html += changes.map(c => {
+    const col = SEV_META[c.risk]?.color || '#64748b';
+    const act = PLAN_ACTION_COLOR[c.action] || '#64748b';
+    return `
+      <div class="plan-change" style="--sev:${col}" data-id="${c.node_id || ''}">
+        <div class="pc-head">
+          <span class="pc-action" style="color:${act}">${c.action}</span>
+          <span class="pc-addr">${c.address}</span>
+          <span class="badge" style="color:${col};background:${hexA(col, 0.12)}">${c.risk}</span>
+        </div>
+        <div class="pc-note">
+          ${c.node_name ? `live: <b>${c.node_name}</b> · ` : ''}
+          ${c.impacted?.length ? `💥 ${c.impacted.length} downstream break` : ''}
+          ${c.note || ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  html += `<button class="btn-refresh" id="btn-plan-clear" style="width:100%;justify-content:center;margin-top:8px;background:var(--slate)">Clear plan preview</button>`;
+
+  const content = document.getElementById('detail-content');
+  content.innerHTML = html;
+  content.querySelectorAll('.plan-change[data-id]').forEach(el => {
+    if (el.dataset.id) el.addEventListener('click', () => selectResource(el.dataset.id));
+  });
+  document.getElementById('btn-plan-clear').addEventListener('click', () => {
+    clearPlan();
+    closeDetails();
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1309,6 +1409,14 @@ function initEventListeners() {
 
   document.getElementById('btn-terraform').addEventListener('click', () => {
     window.location.href = '/api/export/terraform';
+  });
+
+  const planFile = document.getElementById('plan-file');
+  document.getElementById('btn-plan').addEventListener('click', () => planFile.click());
+  planFile.addEventListener('change', async () => {
+    if (!planFile.files.length) return;
+    previewPlan(await planFile.files[0].text());
+    planFile.value = ''; // allow re-selecting the same file
   });
 
   document.getElementById('history-select').addEventListener('change', e => applyTimeTravel(e.target.value));
