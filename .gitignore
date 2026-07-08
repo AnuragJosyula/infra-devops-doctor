@@ -18,3 +18,9 @@ snapshots/
 # Go workspace file
 go.work
 go.work.sum
+
+# binaries
+inframap.exe
+doctor-*
+dist/
+snapshots/

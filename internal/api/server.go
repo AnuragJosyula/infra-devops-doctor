@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/inframap/inframap/internal/doctor"
 	"github.com/inframap/inframap/internal/export"
 	"github.com/inframap/inframap/internal/graph"
+	"github.com/inframap/inframap/internal/planpreview"
 	"github.com/inframap/inframap/internal/provider"
 	"github.com/inframap/inframap/internal/snapshot"
 )
@@ -93,6 +95,7 @@ func (s *Server) Run(ctx context.Context, providers []string) error {
 		api.GET("/snapshots", s.handleListSnapshots)
 		api.GET("/snapshots/diff", s.handleSnapshotDiff)
 		api.GET("/export/terraform", s.handleExportTerraform)
+		api.POST("/plan/preview", s.handlePlanPreview)
 	}
 
 	// WebSocket
@@ -252,6 +255,20 @@ func (s *Server) handleExportTerraform(c *gin.Context) {
 	}
 	c.Header("Content-Disposition", `attachment; filename="main.tf"`)
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(tf))
+}
+
+func (s *Server) handlePlanPreview(c *gin.Context) {
+	body, err := io.ReadAll(io.LimitReader(c.Request.Body, 32<<20)) // 32 MB cap
+	if err != nil || len(body) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "empty body — POST the output of `terraform show -json plan.out`"})
+		return
+	}
+	res, err := planpreview.Preview(body, s.graph)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, res)
 }
 
 // ─── WebSocket ──────────────────────────────────────────
