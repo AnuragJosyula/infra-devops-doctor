@@ -18,7 +18,8 @@ It sits entirely on your local machine—no SaaS subscriptions, no handing over 
 
 ## ✨ Features
 
-- 🌍 **Unified Multi-Cloud Discovery**: Native support for **AWS, Azure, GCP, and Docker**. Scans your resources concurrently and merges them into a single "Mega-Graph".
+- 🌍 **Unified Multi-Cloud Discovery**: Native support for **AWS, Azure, GCP, and Docker**. Scans your resources concurrently and merges them into a single "Mega-Graph". AWS discovery is fully paginated and can scan multiple regions at once.
+- 🔗 **Real Dependency Mapping**: Goes beyond parent/child nesting. Security group rules are resolved into actual `connects_to` edges between instances and databases, load balancers link to their registered targets, and IAM roles link to the instances that assume them — so blast radius reflects how your infrastructure really talks to itself.
 - 🕸️ **Interactive D3.js Visualization**: Beautiful, themeable (Dark/Light) architecture map. Features a collapsible hierarchy tree, minimap, and progressive "Escape-key" navigation.
 - 🎯 **Spotlight Mode (Blast Radius)**: Click any resource to instantly dim the map and highlight its blast radius. See exactly which web servers, load balancers, and subnets and exposed database is connected to.
 - 🩺 **The "Doctor" (Offline Security Scanner)**: A zero-API-cost CSPM engine that analyzes your infrastructure graph entirely offline. It instantly flags:
@@ -71,10 +72,26 @@ Discover your infrastructure and launch the local web dashboard:
 # Explicitly specify clouds to scan
 ./doctor.exe serve --providers=aws,azure,gcp
 
+# Scan every region enabled on the account (or pick specific ones)
+./doctor.exe serve --regions=all
+./doctor.exe serve --regions=us-east-1,eu-west-1
+
 # Run on a custom port
 ./doctor.exe serve --port=8080
 ```
 Open your browser to `http://localhost:8080` (or your chosen port).
+
+### What gets discovered on AWS
+
+| Service | Resources |
+|---|---|
+| Networking | VPCs, subnets, internet gateways, NAT gateways, security groups |
+| Compute | EC2 instances, EBS volumes, Lambda functions, ECS clusters/services |
+| Load balancing | ALBs and NLBs, listeners, target groups and their registered targets |
+| Data | RDS instances (Multi-AZ, encryption, public accessibility), S3 buckets (encryption, versioning, public access block) |
+| Identity | IAM roles and their attached policies, instance profile attachments |
+
+Credentials come from the standard AWS chain, so `aws configure`, `AWS_PROFILE`, SSO sessions (`aws sso login`), and instance roles all work without extra setup. Everything is read-only.
 
 ### Previewing a Terraform Plan
 
@@ -108,6 +125,12 @@ I spent a lot of time polishing the UX to make it feel like a premium tool:
 - **Frontend**: Pure HTML, Vanilla CSS, and JS (`app.js`). Powered by `D3.js` for force-directed and tree graph rendering. The frontend assets are compiled into the Go binary using the `embed` package.
 
 ---
+
+## 🧪 Tests
+
+```bash
+go test ./...
+```
 
 ## 🤝 Contributing
 
