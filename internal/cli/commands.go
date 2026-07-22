@@ -43,6 +43,7 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
 	// ─── serve ──────────────────────────────────────────
 	var servePort int
 	var serveProviders string
+	var serveRegions string
 
 	serveCmd := &cobra.Command{
 		Use:   "serve",
@@ -51,7 +52,7 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
   inframap serve --providers=mock,docker
   inframap serve --port=9090 --providers=mock`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registerProviders(registry, parseProviders(serveProviders))
+			registerProviders(registry, parseProviders(serveProviders), serveRegions)
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -75,10 +76,12 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
 	}
 	serveCmd.Flags().IntVar(&servePort, "port", 8080, "Port for the web dashboard")
 	serveCmd.Flags().StringVar(&serveProviders, "providers", "auto", "Comma-separated providers (auto, mock, aws, azure, gcp, docker)")
+	serveCmd.Flags().StringVar(&serveRegions, "regions", "", "AWS regions: blank for the configured region, 'all', or a comma-separated list")
 
 	// ─── discover ───────────────────────────────────────
 	var discoverProviders string
 	var discoverOutput string
+	var discoverRegions string
 
 	discoverCmd := &cobra.Command{
 		Use:   "discover",
@@ -86,7 +89,7 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
 		Example: `  inframap discover --output=graph.json
   inframap discover --providers=docker --output=infra.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registerProviders(registry, parseProviders(discoverProviders))
+			registerProviders(registry, parseProviders(discoverProviders), discoverRegions)
 
 			ctx := context.Background()
 			providerNames := parseProviders(discoverProviders)
@@ -122,11 +125,13 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
 	}
 	discoverCmd.Flags().StringVar(&discoverProviders, "providers", "mock", "Comma-separated list of providers")
 	discoverCmd.Flags().StringVar(&discoverOutput, "output", "", "Output file path (stdout if empty)")
+	discoverCmd.Flags().StringVar(&discoverRegions, "regions", "", "AWS regions: blank for the configured region, 'all', or a comma-separated list")
 
 	// ─── export ─────────────────────────────────────────
 	var exportFormat string
 	var exportProviders string
 	var exportOutput string
+	var exportRegions string
 
 	exportCmd := &cobra.Command{
 		Use:   "export",
@@ -135,7 +140,7 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
   inframap export --format=mermaid --output=infra.md
   inframap export --format=json --providers=docker`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registerProviders(registry, parseProviders(exportProviders))
+			registerProviders(registry, parseProviders(exportProviders), exportRegions)
 
 			ctx := context.Background()
 			providerNames := parseProviders(exportProviders)
@@ -168,6 +173,7 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
 	exportCmd.Flags().StringVar(&exportFormat, "format", "json", "Output format: json, dot, mermaid, terraform")
 	exportCmd.Flags().StringVar(&exportProviders, "providers", "mock", "Comma-separated list of providers")
 	exportCmd.Flags().StringVar(&exportOutput, "output", "", "Output file path (stdout if empty)")
+	exportCmd.Flags().StringVar(&exportRegions, "regions", "", "AWS regions: blank for the configured region, 'all', or a comma-separated list")
 
 	// ─── providers ──────────────────────────────────────
 	providersCmd := &cobra.Command{
@@ -175,7 +181,7 @@ Supports: AWS (mock), Docker, Kubernetes, Terraform.`,
 		Short: "List available infrastructure providers",
 		Run: func(cmd *cobra.Command, args []string) {
 			// Register all known providers to list them
-			registerProviders(registry, []string{"mock", "docker", "aws"})
+			registerProviders(registry, []string{"mock", "docker", "aws"}, "")
 
 			fmt.Println("Available providers:")
 			fmt.Println()
@@ -214,11 +220,11 @@ func parseProviders(s string) []string {
 	return result
 }
 
-func registerProviders(registry *provider.Registry, names []string) {
+func registerProviders(registry *provider.Registry, names []string, regions string) {
 	for _, name := range names {
 		switch name {
 		case "auto":
-			autoDetect(registry)
+			autoDetect(registry, regions)
 		case "mock":
 			registry.Register(mockprovider.New())
 		case "docker":
@@ -229,7 +235,7 @@ func registerProviders(registry *provider.Registry, names []string) {
 			}
 			registry.Register(d)
 		case "aws":
-			a, err := awsprovider.New(context.Background())
+			a, err := awsprovider.New(context.Background(), regions)
 			if err != nil {
 				log.Printf("⚠️  AWS provider unavailable: %v", err)
 				continue
@@ -258,9 +264,9 @@ func registerProviders(registry *provider.Registry, names []string) {
 // autoDetect registers every provider whose local environment is usable
 // (AWS creds, docker socket, az/gcloud logins). Falls back to mock so the
 // dashboard is never empty on first run.
-func autoDetect(registry *provider.Registry) {
+func autoDetect(registry *provider.Registry, regions string) {
 	found := 0
-	if a, err := awsprovider.New(context.Background()); err == nil {
+	if a, err := awsprovider.New(context.Background(), regions); err == nil {
 		registry.Register(a)
 		log.Println("🔎 auto: AWS credentials found")
 		found++
